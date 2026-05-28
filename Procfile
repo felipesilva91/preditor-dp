@@ -1,3 +1,1 @@
-web:
-gunicorn
-preditor_dp.app:app
+web: gunicorn preditor_dp.app:app
