@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preditor DP — DNIT 179/2018-IE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="norm-badge"><span class="norm-dot"></span>DNIT 179/2018-IE</div>
+    <h1 class="sidebar-title">Preditor de Deformação Permanente</h1>
+    <p class="sidebar-sub">Random Forest · 9.024 ensaios triaxiais · 15 solos do Ceará</p>
+  </div>
+
+  <div class="progress-bar">
+    <div class="prog-step active" id="prog-1"><div class="prog-num">1</div><div class="prog-label">Solo</div></div>
+    <div class="prog-line"></div>
+    <div class="prog-step" id="prog-2"><div class="prog-num">2</div><div class="prog-label">Tensões</div></div>
+    <div class="prog-line"></div>
+    <div class="prog-step" id="prog-3"><div class="prog-num">3</div><div class="prog-label">Ciclos</div></div>
+  </div>
+
+  <!-- ETAPA 1 — DADOS DO SOLO -->
+  <div class="step-panel active" id="panel-1">
+    <div class="panel-title">
+      <span class="panel-num">Etapa 1</span>
+      <span class="panel-name">Dados do seu solo</span>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Nome da amostra <span class="field-unit">(identificação)</span></label>
+      <input type="text" id="inp-nome" class="field-input" placeholder="Ex: Solo A-01 / Jazida km 42">
+    </div>
+
+    {% for key, r in ranges.items() %}
+    <div class="field-group">
+      <label class="field-label">
+        {{ r.label }}
+        <span class="field-unit">{{ r.unit }}</span>
+      </label>
+      <input
+        type="number"
+        id="inp-{{ key }}"
+        class="field-input"
+        placeholder="{{ r.min }} – {{ r.max }}"
+        step="{{ '0.01' if key == 'gd' else '0.1' if key in ['hot','p200'] else '1' }}"
+        min="{{ r.min }}"
+        max="{{ r.max }}"
+      >
+      <div class="field-hint">Insira valores entre {{ r.min }} e {{ r.max }} {{ r.unit }}</div>
+    </div>
+    {% endfor %}
+
+    <div class="field-error hidden" id="err-solo">Preencha todos os campos do solo</div>
+    <button class="btn-next" onclick="goStep(2)">Próxima etapa →</button>
+  </div>
+
+  <!-- ETAPA 2 — TENSÕES -->
+  <div class="step-panel hidden" id="panel-2">
+    <div class="panel-title">
+      <span class="panel-num">Etapa 2</span>
+      <span class="panel-name">Tensões — Tabela 2 DNIT 179</span>
+    </div>
+    <div class="info-rule blue">
+      Pares de tensão conforme <strong>Tabela 2 da DNIT 179/2018-IE</strong>.
+      σ₃ = confinante (constante). σd = desvio (cíclica, pulsante).
+    </div>
+    <div class="tensao-group">
+      <div class="tensao-label">Tensão confinante σ₃ (kPa)</div>
+      <div class="tensao-row" id="grid-s3">
+        <button class="tbtn" onclick="selectS3(this,40)">40 kPa<span class="razao-hint">σ₁/σ₃ variável</span></button>
+        <button class="tbtn" onclick="selectS3(this,80)">80 kPa<span class="razao-hint">σ₁/σ₃ variável</span></button>
+        <button class="tbtn" onclick="selectS3(this,120)">120 kPa<span class="razao-hint">σ₁/σ₃ variável</span></button>
+      </div>
+      <div class="field-error hidden" id="err-s3">Selecione σ₃</div>
+    </div>
+    <div class="tensao-group">
+      <div class="tensao-label" id="sd-label">Tensão desvio σd (kPa) <span class="hint-text">(selecione σ₃ primeiro)</span></div>
+      <div class="tensao-row" id="grid-sd"></div>
+      <div class="field-error hidden" id="err-sd">Selecione σd</div>
+    </div>
+    <div class="resumo-tensao hidden" id="resumo-tensao">
+      <div class="resumo-grid">
+        <div class="resumo-item"><div class="resumo-label">σ₃ (kPa)</div><div class="resumo-val" id="r-s3">—</div></div>
+        <div class="resumo-item"><div class="resumo-label">σd (kPa)</div><div class="resumo-val" id="r-sd">—</div></div>
+        <div class="resumo-item"><div class="resumo-label">σ₁/σ₃</div><div class="resumo-val" id="r-razao">—</div></div>
+      </div>
+    </div>
+    <div class="nav-btns">
+      <button class="btn-back" onclick="goStep(1)">← Voltar</button>
+      <button class="btn-next" onclick="goStep(3)">Próxima etapa →</button>
+    </div>
+  </div>
+
+  <!-- ETAPA 3 — CICLOS -->
+  <div class="step-panel hidden" id="panel-3">
+    <div class="panel-title">
+      <span class="panel-num">Etapa 3</span>
+      <span class="panel-name">Número de ciclos</span>
+    </div>
+    <div class="chips-group">
+      <div class="chip-label">N — ciclos de referência para diagnóstico</div>
+      <div class="chips">
+        <button class="chip" onclick="selectNC(this,1000)">1.000</button>
+        <button class="chip" onclick="selectNC(this,10000)">10.000</button>
+        <button class="chip" onclick="selectNC(this,50000)">50.000</button>
+        <button class="chip" onclick="selectNC(this,100000)">100.000</button>
+        <button class="chip active" onclick="selectNC(this,150000)">150.000</button>
+      </div>
+    </div>
+    <div class="n-display">
+      <div class="n-label">Ciclos selecionados</div>
+      <div class="n-value" id="n-display">150.000</div>
+    </div>
+    <div class="info-rule blue">
+      A norma DNIT 179 exige mínimo de <strong>150.000 ciclos</strong>.
+      A curva completa é sempre gerada. O N define o ponto de diagnóstico.
+    </div>
+    <div class="nav-btns">
+      <button class="btn-back" onclick="goStep(2)">← Voltar</button>
+      <button class="btn-calc" onclick="calcular()">
+        <span id="btn-text">Calcular εp</span>
+        <div class="spinner hidden" id="spinner"></div>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main-content">
+  <div class="empty-state" id="empty-state">
+    <div class="empty-icon">◎</div>
+    <div class="empty-title">Insira os parâmetros do seu solo</div>
+    <div class="empty-sub">Preencha as etapas ao lado com as propriedades do seu material e clique em <strong>Calcular εp</strong>.</div>
+    <div class="empty-steps">
+      <div class="empty-step"><span class="es-num">1</span>Propriedades do solo (Wot, γd, CBR, granulometria)</div>
+      <div class="empty-step"><span class="es-num">2</span>Tensões σ₃ e σd — Tabela 2 da DNIT 179</div>
+      <div class="empty-step"><span class="es-num">3</span>Número de ciclos de referência</div>
+    </div>
+  </div>
+
+  <div class="resultado hidden" id="resultado">
+    <div class="res-header">
+      <div class="res-meta" id="res-meta"></div>
+      <div class="res-actions">
+        <button class="btn-export btn-pdf" id="btn-pdf" onclick="exportar('pdf')">
+          <span class="export-icon">⬇</span> PDF
+        </button>
+        <button class="btn-export btn-xlsx" id="btn-xlsx" onclick="exportar('xlsx')">
+          <span class="export-icon">⬇</span> Excel
+        </button>
+        <button class="btn-novo" onclick="novoEnsaio()">+ Novo ensaio</button>
+      </div>
+    </div>
+
+    <div class="ep-hero">
+      <div class="ep-label">Deformação permanente específica prevista — εp</div>
+      <div class="ep-value"><span id="ep-valor">—</span><span class="ep-unit">%</span></div>
+      <div class="ep-sub" id="ep-sub"></div>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card"><div class="mc-label">N = 10.000</div><div class="mc-val" id="m-10k">—</div><div class="mc-unit">%</div></div>
+      <div class="metric-card"><div class="mc-label">N = 50.000</div><div class="mc-val" id="m-50k">—</div><div class="mc-unit">%</div></div>
+      <div class="metric-card"><div class="mc-label">N = 100.000</div><div class="mc-val" id="m-100k">—</div><div class="mc-unit">%</div></div>
+      <div class="metric-card"><div class="mc-label">N = 150.000</div><div class="mc-val" id="m-150k">—</div><div class="mc-unit">%</div></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Curva εp × Número de ciclos — DNIT 179/2018-IE</div>
+      <div class="chart-wrap"><canvas id="chart-dp"></canvas></div>
+    </div>
+
+    <div class="tipo-card" id="tipo-card">
+      <div class="tipo-head">
+        <div class="tipo-badge" id="tipo-badge"></div>
+        <div class="tipo-name" id="tipo-name"></div>
+      </div>
+      <div class="tipo-desc" id="tipo-desc"></div>
+      <div class="tipo-ref" id="tipo-ref"></div>
+    </div>
+
+    <div class="diag-card">
+      <div class="card-title">Diagnóstico técnico — uso em pavimento</div>
+      <div class="diag-row" id="diag-base"><div class="diag-dot"></div><div class="diag-body"><div class="diag-txt"></div><div class="diag-sub">Camada de base</div></div></div>
+      <div class="diag-row" id="diag-sub"><div class="diag-dot"></div><div class="diag-body"><div class="diag-txt"></div><div class="diag-sub">Camada de sub-base</div></div></div>
+      <div class="diag-row" id="diag-sub2"><div class="diag-dot"></div><div class="diag-body"><div class="diag-txt"></div><div class="diag-sub">Subleito do pavimento</div></div></div>
+    </div>
+
+    <!-- GUIMARÃES - DETALHADO -->
+    <div class="guim-card">
+      <div class="card-title">Modelo de Guimarães (2009) — DNIT 179/2018-IE seção 10.1</div>
+
+      <div class="guim-formula-box">
+        <div class="guim-formula-title">Expressão do modelo</div>
+        <div class="guim-formula">εp(%) = ψ₁ · (σ₃ / p₀)^ψ₂ · (σd / p₀)^ψ₃ · N^ψ₄</div>
+        <div class="guim-formula-sub">p₀ = 101,325 kPa (pressão atmosférica de referência)</div>
+      </div>
+
+      <div class="guim-method">
+        <div class="guim-method-title">Como os parâmetros foram obtidos</div>
+        <div class="guim-steps">
+          <div class="guim-step"><span class="gs-num">1</span><span>O modelo Random Forest previu os valores de εp para os 13 pontos de leitura da curva (N = 1, 10, 50... 150.000 ciclos)</span></div>
+          <div class="guim-step"><span class="gs-num">2</span><span>Usando σ₃, σd e N como variáveis independentes, aplicou-se regressão não linear múltipla (método dos mínimos quadrados) para ajustar os 4 parâmetros ψ₁..ψ₄ à curva prevista</span></div>
+          <div class="guim-step"><span class="gs-num">3</span><span>O ajuste minimiza a diferença entre a curva do Random Forest e a curva analítica do modelo de Guimarães</span></div>
+        </div>
+      </div>
+
+      <div class="guim-params-label">Parâmetros calibrados para este ensaio</div>
+      <div class="guim-params-res" id="guim-res"></div>
+      <div class="guim-r2-row" id="guim-r2-row"></div>
+
+      <div class="guim-interp">
+        <div class="guim-interp-title">Interpretação dos parâmetros</div>
+        <div class="guim-interp-grid">
+          <div class="gi-item"><div class="gi-sym">ψ₁</div><div class="gi-desc">Fator de escala — intercepto da curva no início do carregamento</div></div>
+          <div class="gi-item"><div class="gi-sym">ψ₂</div><div class="gi-desc">Expoente de σ₃ — influência da tensão confinante na deformação</div></div>
+          <div class="gi-item"><div class="gi-sym">ψ₃</div><div class="gi-desc">Expoente de σd — influência da tensão desvio na deformação</div></div>
+          <div class="gi-item"><div class="gi-sym">ψ₄</div><div class="gi-desc">Expoente de N — taxa de acumulação da deformação com os ciclos</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PARÂMETROS USADOS -->
+    <div class="inputs-card">
+      <div class="card-title">Parâmetros inseridos</div>
+      <div class="inputs-grid" id="inputs-grid"></div>
+    </div>
+
+  </div>
+</main>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
