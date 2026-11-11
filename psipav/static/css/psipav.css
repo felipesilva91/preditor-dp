@@ -127,3 +127,36 @@ table.tab { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .toast.info { background: var(--tinta); }
 .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--erro); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.18); z-index: 50; max-width: 90vw; }
 .oculto { display: none; }
+
+/* ── Login ─────────────────────────────────────────────────────────────── */
+.tela-login { display: grid; grid-template-columns: 1.1fr 1fr; min-height: 100vh; }
+@media (max-width: 860px) { .tela-login { grid-template-columns: 1fr; } .login-lado { display: none; } }
+.login-lado { background: var(--tinta); color: #fff; padding: 56px 56px 40px; display: flex; flex-direction: column; gap: 40px; }
+.login-marca { display: flex; align-items: center; gap: 14px; }
+.logo-g { width: 48px; height: 48px; font-size: 30px; border-radius: 10px; }
+.login-nome { font-size: 24px; font-weight: 700; }
+.login-sub { color: #9ca3af; font-size: 13px; }
+.login-lista { list-style: none; display: flex; flex-direction: column; gap: 18px; margin-top: auto; }
+.login-lista li { color: #d1d5db; font-size: 15px; padding-left: 18px; border-left: 2px solid #374151; }
+.login-lista b { color: #fff; }
+.login-rodape { color: #6b7280; font-size: 12px; margin-top: auto; }
+.login-caixa { display: grid; place-items: center; padding: 32px; background: var(--fundo); }
+.login-form { width: 100%; max-width: 360px; background: #fff; border: 1px solid var(--linha); border-radius: 12px; padding: 32px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 30px rgba(17,24,39,.06); }
+.login-form h1 { font-size: 22px; color: var(--tinta); }
+.login-form p { color: var(--suave); font-size: 13px; margin-top: -8px; }
+.senha-linha { display: flex; gap: 6px; }
+.senha-linha input { flex: 1; }
+.login-erro { background: var(--erro-cl); color: var(--erro); border: 1px solid #fecaca; border-radius: 6px; padding: 8px 10px; font-size: 12.5px; }
+.login-versao { text-align: center; color: var(--suave); font-size: 11px; }
+
+/* ── Barra dos gráficos ────────────────────────────────────────────────── */
+.card-tit.com-ferr { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ferr { display: flex; gap: 4px; flex-wrap: wrap; }
+.ferr button { font: 500 11.5px 'Inter', sans-serif; border: 1px solid #d1d5db; background: #fff; color: var(--texto); border-radius: 6px; padding: 4px 9px; cursor: pointer; }
+.ferr button:hover { background: #f3f4f6; }
+.ferr button.on { background: var(--tinta); color: #fff; border-color: var(--tinta); }
+.graf { transition: height .2s ease; }
+.graf.grande { height: 560px !important; }
+.sair { color: #d1d5db; font-size: 12.5px; text-decoration: none; padding: 7px 10px; border-radius: 6px; border: 1px solid #374151; }
+.sair:hover { background: rgba(255,255,255,.08); color: #fff; }
+.topo-dir { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

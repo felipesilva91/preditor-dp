@@ -69,6 +69,72 @@ function desenhar(id, cfg) {
   return graficos[id];
 }
 
+// Exporta o gráfico em tamanho fixo e alta resolução (sem distorção no PDF/Excel)
+function imagemAlta(id, largura = 960, altura = 540) {
+  const g = graficos[id];
+  if (!g) return null;
+  const cv = document.createElement("canvas");
+  cv.width = largura; cv.height = altura;
+  cv.style.width = largura + "px"; cv.style.height = altura + "px";
+  const caixa = document.createElement("div");
+  caixa.style.cssText = `position:fixed;left:-10000px;top:0;width:${largura}px;height:${altura}px`;
+  caixa.appendChild(cv);
+  document.body.appendChild(caixa);
+  const fonteAnt = Chart.defaults.font.size;
+  Chart.defaults.font.size = 14;
+  const dados = JSON.parse(JSON.stringify(g.config.data));
+  const opcoes = Object.assign({}, g.config.options, { responsive: false, maintainAspectRatio: false, animation: false, devicePixelRatio: 2.5 });
+  const tmp = new Chart(cv, { type: g.config.type, data: dados, options: opcoes });
+  const url = tmp.toBase64Image("image/png", 1);
+  tmp.destroy();
+  Chart.defaults.font.size = fonteAnt;
+  caixa.remove();
+  return url;
+}
+const imagem = (id) => imagemAlta(id);
+
+const eixoEpLog = { type: "logarithmic", title: { display: true, text: "εp (%) · escala log" }, grid: { color: "#f1f5f9" },
+  ticks: { callback: (v) => { const l = Math.log10(v); return Math.abs(l - Math.round(l)) < 1e-9 ? num(v, v < 1 ? Math.min(4, -Math.round(l)) : 0) : ""; } } };
+
+function titulo(texto, id, opc = {}) {
+  return `<div class="card-tit com-ferr"><span>${texto}</span><span class="ferr" data-g="${id}" data-log="${opc.log ? 1 : 0}"></span></div>`;
+}
+
+function montarFerramentas(raiz) {
+  raiz.querySelectorAll(".ferr").forEach((f) => {
+    const id = f.dataset.g;
+    const btns = [];
+    if (f.dataset.log === "1") btns.push(`<button type="button" data-a="log" title="Alternar escala do eixo vertical">Escala log</button>`);
+    btns.push(`<button type="button" data-a="ampliar" title="Ampliar o gráfico">Ampliar</button>`);
+    btns.push(`<button type="button" data-a="png" title="Baixar o gráfico em PNG de alta resolução">PNG</button>`);
+    f.innerHTML = btns.join("");
+    f.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button");
+      if (!b || !graficos[id]) return;
+      const g = graficos[id];
+      if (b.dataset.a === "log") {
+        const ligar = !b.classList.contains("on");
+        b.classList.toggle("on", ligar);
+        b.textContent = ligar ? "Escala linear" : "Escala log";
+        g.config.options.scales.y = Object.assign({}, ligar ? eixoEpLog : eixoEp);
+        g.update();
+      } else if (b.dataset.a === "ampliar") {
+        const caixa = $(id).parentElement;
+        const grande = !caixa.classList.contains("grande");
+        caixa.classList.toggle("grande", grande);
+        b.classList.toggle("on", grande);
+        b.textContent = grande ? "Reduzir" : "Ampliar";
+        setTimeout(() => g.resize(), 220);
+      } else if (b.dataset.a === "png") {
+        const a = document.createElement("a");
+        a.href = imagemAlta(id, 1600, 900);
+        a.download = `PsiPav_${id}.png`;
+        a.click();
+      }
+    });
+  });
+}
+
 const pts = (xs, ys) => xs.map((x, i) => ({ x, y: ys[i] }));
 const eixoN = (titulo = "Número de ciclos, N") => ({
   type: "logarithmic", min: 1, max: 150000, title: { display: true, text: titulo },
@@ -103,7 +169,6 @@ function graficoShakedown(id, series) {
   });
 }
 
-function imagem(id) { return graficos[id] ? graficos[id].toBase64Image("image/png", 1) : null; }
 
 async function baixar(fmt, rel) {
   try {
@@ -171,7 +236,7 @@ function renderTriagem(d) {
       <div class="kpi"><div class="kpi-rot">Solo mais parecido do banco</div><div class="kpi-val" style="font-size:16px">${esc(ref.nome)}</div><div class="kpi-sub">semelhança ${ref.nivel} (distância ${num(ref.dist, 2)})</div></div>
     </div>
     <div class="card">
-      <div class="card-tit">Curva εp × N prevista</div>
+      ${titulo("Curva εp × N prevista", "g-t-curva", { log: true })}
       <div class="graf"><canvas id="g-t-curva"></canvas></div>
       <div class="nota">Faixas de 80% e 90% (a partir de 100 ciclos) calibradas por validação cruzada deixando um solo inteiro de fora (erro mediano em 150.000 ciclos: ${num(v.erro_rel_mediano * 100, 0)}%; P90: ${num(v.erro_rel_p90 * 100, 0)}%). ${ref.ensaio ? `Pontos: ensaio real de ${esc(ref.nome)} no mesmo par de tensões.` : ""}</div>
     </div>
@@ -189,7 +254,7 @@ function renderTriagem(d) {
       </div>
     </div>
     <div class="card">
-      <div class="card-tit">Análise de acomodamento (Dawson e Wellner)</div>
+      ${titulo("Análise de acomodamento (Dawson e Wellner)", "g-t-shake")}
       <div class="graf"><canvas id="g-t-shake"></canvas></div>
       <div class="nota">${NOTA_LIMA}</div>
     </div>`;
@@ -213,7 +278,8 @@ function renderTriagem(d) {
       scales: { x: eixoN(), y: eixoEp },
     },
   });
-  graficoShakedown("g-t-shake", [{ rotulo: "Previsão", taxas: d.taxas, cor: "#111827" }].concat(ref.ensaio ? [] : []));
+  graficoShakedown("g-t-shake", [{ rotulo: "Previsão", taxas: d.taxas, cor: "#111827" }]);
+  montarFerramentas($("res-triagem"));
   $("t-pdf").onclick = () => baixar("pdf", relTriagem(d));
   $("t-xlsx").onclick = () => baixar("xlsx", relTriagem(d));
 }
@@ -226,10 +292,10 @@ function relTriagem(d) {
       nota: `Faixa de 90%: ${num(d.faixa90_150[0])} a ${num(d.faixa90_150[1])} %. Acomodamento estimado: ${d.classe.lima} (Lima, 2020) · ${d.classe.werkmeister || "—"} (Werkmeister, 2003).` },
   ];
   if (d.atr) secoes.push({ titulo: "Contribuição da camada no afundamento", tipo: "kv", linhas: [["Espessura (cm)", d.atr.h_cm], ["δ = εp·h (mm)", num(d.atr.mm, 2)], ["Faixa de 90% (mm)", `${num(d.atr.inf90, 2)} a ${num(d.atr.sup90, 2)}`]] });
-  secoes.push({ titulo: "Curva εp × N", tipo: "imagem", img: imagem("g-t-curva"), altura: 78 });
+  secoes.push({ titulo: "Curva εp × N", tipo: "imagem", img: imagem("g-t-curva") });
   if (g) secoes.push({ titulo: "Modelo de Guimarães (2009) ajustado às 9 curvas previstas", tipo: "tabela", cabecalho: ["ψ1", "ψ2", "ψ3", "ψ4", "R²", "Erro rel. médio"], linhas: [[...g.psi.map((p) => num(p, 4)), num(g.r2, 3), num(g.erro_rel_medio * 100, 1) + "%"]] });
   secoes.push({ titulo: "εp prevista em 150.000 ciclos para os 9 pares da Tabela 2", tipo: "tabela", cabecalho: ["σ3 (kPa)", "σd (kPa)", "σ1/σ3", "εp (%)"], linhas: d.pares9.map((p) => [p.s3, p.sd, num((p.s3 + p.sd) / p.s3, 0), num(p.ep[p.ep.length - 1])]) });
-  secoes.push({ titulo: "Análise de acomodamento", tipo: "imagem", img: imagem("g-t-shake"), altura: 72 });
+  secoes.push({ titulo: "Análise de acomodamento", tipo: "imagem", img: imagem("g-t-shake") });
   secoes.push({ titulo: "Solo de referência do banco", tipo: "texto", texto: `${d.solo_ref.nome} (${d.solo_ref.props.aashto}), semelhança ${d.solo_ref.nivel}, distância normalizada ${num(d.solo_ref.dist, 2)}.` });
   if (d.avisos.length) secoes.push({ titulo: "Avisos", tipo: "texto", texto: d.avisos.join(" ") });
   secoes.push({ titulo: "Notas", tipo: "texto", italico: true, texto: `Previsão de triagem por aprendizado de máquina (ExtraTrees + Gradient Boosting) treinado com 105 ensaios de 15 solos. Em validação deixando cada solo de fora, o erro relativo mediano em 150.000 ciclos foi de ${num(d.validacao.erro_rel_mediano * 100, 0)}% (P90 ${num(d.validacao.erro_rel_p90 * 100, 0)}%). Não substitui o ensaio da DNIT 179/2018-IE. ${NOTA_LIMA}` });
@@ -237,8 +303,10 @@ function relTriagem(d) {
     arquivo: nomeArq("PsiPav_triagem", d.nome), titulo: `Triagem de deformação permanente · ${d.nome}`,
     subtitulo: "PsiPav · previsão por propriedades do solo · DNIT 179/2018-IE", secoes,
     series: [
-      { nome: "Curva prevista", colunas: ["N", "εp (%)", "Inf. 90%", "Sup. 90%", "Inf. 80%", "Sup. 80%"], linhas: d.N.map((n, i) => [n, d.ep[i], d.inf90[i], d.sup90[i], d.inf80[i], d.sup80[i]]) },
-      { nome: "9 pares Tabela 2", colunas: ["N", ...d.pares9.map((p) => `${p.s3}/${p.sd}`)], linhas: d.N.map((n, i) => [n, ...d.pares9.map((p) => p.ep[i])]) },
+      { nome: "Curva prevista", colunas: ["N", "εp (%)", "Inf. 90%", "Sup. 90%", "Inf. 80%", "Sup. 80%"], linhas: d.N.map((n, i) => [n, d.ep[i], d.inf90[i], d.sup90[i], d.inf80[i], d.sup80[i]]),
+        grafico: { titulo: `Curva εp × N prevista (σ3 = ${d.s3} / σd = ${d.sd} kPa)`, colunas: [2, 3, 4] } },
+      { nome: "9 pares Tabela 2", colunas: ["N", ...d.pares9.map((p) => `${p.s3}/${p.sd}`)], linhas: d.N.map((n, i) => [n, ...d.pares9.map((p) => p.ep[i])]),
+        grafico: { titulo: "εp × N prevista · 9 pares da Tabela 2" } },
     ],
   };
 }
@@ -312,12 +380,12 @@ function renderEnsaio(d) {
       <div class="kpi"><div class="kpi-rot">Acomodamento até agora</div><div class="kpi-val">${selo(c.lima)}</div><div class="kpi-sub">Werkmeister: ${c.werkmeister || "—"} · taxa ${cient(c.taxa_final)} %/ciclo</div></div>
     </div>
     <div class="card">
-      <div class="card-tit">Leituras e projeção até 150.000 ciclos</div>
+      ${titulo("Leituras e projeção até 150.000 ciclos", "g-e-curva", { log: true })}
       <div class="graf"><canvas id="g-e-curva"></canvas></div>
       <div class="nota">Faixa de 90% calibrada por validação deixando cada solo de fora (cobertura obtida: 88,6%). O modelo usa só as leituras do próprio ensaio e o estado de tensões, então vale para qualquer solo.</div>
     </div>
     <div class="card">
-      <div class="card-tit">Análise de acomodamento (Dawson e Wellner)</div>
+      ${titulo("Análise de acomodamento (Dawson e Wellner)", "g-e-shake")}
       <div class="graf"><canvas id="g-e-shake"></canvas></div>
       <div class="nota">${NOTA_LIMA}${c.n_acomodamento ? ` Mantida a tendência atual, a taxa de 1×10⁻⁷ %/ciclo seria atingida por volta de ${inteiro(c.n_acomodamento)} ciclos.` : ""}</div>
     </div>`;
@@ -338,6 +406,7 @@ function renderEnsaio(d) {
     },
   });
   graficoShakedown("g-e-shake", [{ rotulo: "Ensaio", taxas: d.taxas, cor: "#111827" }]);
+  montarFerramentas($("res-ensaio"));
   $("e-pdf").onclick = () => baixar("pdf", relEnsaio(d));
   $("e-xlsx").onclick = () => baixar("xlsx", relEnsaio(d));
 }
@@ -351,13 +420,13 @@ function relEnsaio(d) {
       { titulo: "Decisão", tipo: "texto", texto: p.pode_parar ? `Previsão estável: o ensaio pode ser encerrado (faixa de 90% de ±${num(p.meia90_mm, 3)} mm; tolerância ${num(d.tol_mm, 2)} mm ou ${num(d.tol_rel, 0)}%).` : `Continuar o ensaio até ${inteiro(p.proximo_ponto)} ciclos (faixa de 90% de ±${num(p.meia90_mm, 3)} mm; tolerância ${num(d.tol_mm, 2)} mm ou ${num(d.tol_rel, 0)}%).` },
       { titulo: "εp prevista em 150.000 ciclos", tipo: "destaque", texto: `${num(p.ep150)} %`, nota: `Faixa de 90%: ${num(p.inf90)} a ${num(p.sup90)} %. Deslocamento previsto: ${num(p.delta150_mm, 2)} mm (CP de ${num(d.altura_mm, 0)} mm).` },
       { titulo: "Resumo", tipo: "kv", linhas: [["Leitura atual", `${num(p.ep_atual)} % em ${inteiro(p.n_atual)} ciclos`], ["Nível de parada do modelo", `${inteiro(p.nivel_parada)} ciclos`], ["Acomodamento (Lima, 2020)", c.lima], ["Werkmeister (2003)", c.werkmeister || "—"], ["Taxa atual", `${cient(c.taxa_final)} %/ciclo`], ["Horas de equipamento economizadas (2 Hz)", num(p.horas_economizadas, 1)]] },
-      { titulo: "Leituras e projeção", tipo: "imagem", img: imagem("g-e-curva"), altura: 78 },
-      { titulo: "Análise de acomodamento", tipo: "imagem", img: imagem("g-e-shake"), altura: 72 },
+      { titulo: "Leituras e projeção", tipo: "imagem", img: imagem("g-e-curva") },
+      { titulo: "Análise de acomodamento", tipo: "imagem", img: imagem("g-e-shake") },
       ...(d.avisos.length ? [{ titulo: "Avisos", tipo: "texto", texto: d.avisos.join(" ") }] : []),
       { titulo: "Notas", tipo: "texto", italico: true, texto: `Modelo de extrapolação (ExtraTrees + Gradient Boosting) treinado com 102 ensaios de 15 solos, usando só as leituras até o nível de parada e o estado de tensões. Faixa de 90% por predição conformal agrupada por solo. ${NOTA_LIMA}` },
     ],
-    series: [{ nome: "Leituras", colunas: ["N", "εp (%)"], linhas: d.N.map((n, i) => [n, d.ep[i]]) },
-             { nome: "Projeção", colunas: ["N", "εp (%)", "Inf. 90%", "Sup. 90%"], linhas: p.proj_n.map((n, i) => [n, p.proj_ep[i], p.proj_inf90[i], p.proj_sup90[i]]) }],
+    series: [{ nome: "Leituras", colunas: ["N", "εp (%)"], linhas: d.N.map((n, i) => [n, d.ep[i]]), grafico: { titulo: "Leituras do ensaio" } },
+             { nome: "Projeção", colunas: ["N", "εp (%)", "Inf. 90%", "Sup. 90%"], linhas: p.proj_n.map((n, i) => [n, p.proj_ep[i], p.proj_inf90[i], p.proj_sup90[i]]), grafico: { titulo: "Projeção até 150.000 ciclos" } }],
   };
 }
 
@@ -399,8 +468,8 @@ function renderAnalise(d) {
     </div>` : ""}
     ${d.atr ? `<div class="kpis"><div class="kpi"><div class="kpi-rot">Contribuição da camada (pior par)</div><div class="kpi-val">${num(d.atr.mm, 2)} <small>mm</small></div><div class="kpi-sub">h = ${d.atr.h_cm} cm · par ${d.atr.par[0]}/${d.atr.par[1]} kPa</div></div></div>` : ""}
     <div class="card">
-      <div class="card-tit">Curvas εp × N · ensaios (linhas cheias) e modelo ajustado (tracejado)</div>
-      <div class="graf" style="height:380px"><canvas id="g-a-curvas"></canvas></div>
+      ${titulo("Curvas εp × N · ensaios (linhas cheias) e modelo ajustado (tracejado)", "g-a-curvas", { log: true })}
+      <div class="graf" style="height:400px"><canvas id="g-a-curvas"></canvas></div>
     </div>
     <div class="card">
       <div class="card-tit">Resultado por corpo de prova</div>
@@ -410,8 +479,8 @@ function renderAnalise(d) {
       <div class="nota">${NOTA_LIMA}</div>
     </div>
     <div class="card">
-      <div class="card-tit">Análise de acomodamento (Dawson e Wellner)</div>
-      <div class="graf" style="height:380px"><canvas id="g-a-shake"></canvas></div>
+      ${titulo("Análise de acomodamento (Dawson e Wellner)", "g-a-shake")}
+      <div class="graf" style="height:400px"><canvas id="g-a-shake"></canvas></div>
     </div>`;
   const ds = [];
   ens.forEach((e, i) => {
@@ -429,6 +498,7 @@ function renderAnalise(d) {
     },
   });
   graficoShakedown("g-a-shake", ens.map((e, i) => ({ rotulo: `${e.s3}/${e.sd}`, taxas: e.taxas, cor: CORES[i % CORES.length] })));
+  montarFerramentas($("res-analise"));
   $("a-pdf").onclick = () => baixar("pdf", relAnalise(d, ens));
   $("a-xlsx").onclick = () => baixar("xlsx", relAnalise(d, ens));
 }
@@ -438,16 +508,21 @@ function relAnalise(d, ens) {
   const secoes = [];
   if (g) secoes.push({ titulo: "Modelo de Guimarães (2009) · parâmetros para o MeDiNa", tipo: "tabela", cabecalho: ["ψ1", "ψ2", "ψ3", "ψ4", "R²", "Erro rel. médio", "Pares"], linhas: [[...g.psi.map((p) => num(p, 4)), num(g.r2, 3), num(g.erro_rel_medio * 100, 1) + "%", g.n_pares]] });
   if (d.atr) secoes.push({ titulo: "Contribuição da camada no afundamento (pior par)", tipo: "kv", linhas: [["Espessura (cm)", d.atr.h_cm], ["Par (kPa)", `${d.atr.par[0]}/${d.atr.par[1]}`], ["δ = εp·h (mm)", num(d.atr.mm, 2)]] });
-  secoes.push({ titulo: "Curvas εp × N", tipo: "imagem", img: imagem("g-a-curvas"), altura: 85 });
+  secoes.push({ titulo: "Curvas εp × N", tipo: "imagem", img: imagem("g-a-curvas") });
   secoes.push({ titulo: "Resultado por corpo de prova", tipo: "tabela", cabecalho: ["σ3", "σd", "N final", "εp final (%)", "Taxa final (%/ciclo)", "Lima (2020)", "Werkmeister"],
     linhas: ens.map((e) => [e.s3, e.sd, inteiro(e.classe.n_final), num(e.classe.ep_final), cient(e.classe.taxa_final), e.classe.lima, e.classe.werkmeister || "—"]) });
-  secoes.push({ titulo: "Análise de acomodamento", tipo: "imagem", img: imagem("g-a-shake"), altura: 85 });
+  secoes.push({ titulo: "Análise de acomodamento", tipo: "imagem", img: imagem("g-a-shake") });
   if (d.avisos.length) secoes.push({ titulo: "Avisos", tipo: "texto", texto: d.avisos.join(" ") });
   secoes.push({ titulo: "Notas", tipo: "texto", italico: true, texto: `Regressão não linear múltipla em log(εp), com cada ensaio reamostrado em 25 pontos log-espaçados. ${NOTA_LIMA}` });
   return {
     arquivo: nomeArq("PsiPav_ensaios", d.nome), titulo: `Análise de ensaios de deformação permanente · ${d.nome}`,
     subtitulo: `PsiPav · ${ens.length} corpos de prova · DNIT 179/2018-IE`, secoes,
-    series: ens.map((e) => ({ nome: `${e.s3}-${e.sd}`, colunas: ["N", "εp (%)"], linhas: e.N.map((n, i) => [n, e.ep[i]]) })),
+    series: [
+      ...(g ? [{ nome: "Modelo Guimarães", colunas: ["N", ...ens.map((e) => `${e.s3}/${e.sd}`)], linhas: d.N_modelo.map((n, i) => [n, ...ens.map((e) => e.modelo[i])]),
+        grafico: { titulo: "Modelo de Guimarães ajustado · todos os pares" } }] : []),
+      ...ens.map((e) => ({ nome: `${e.s3}-${e.sd}`, colunas: ["N", "εp (%)", ...(e.modelo ? [] : [])], linhas: e.N.map((n, i) => [n, e.ep[i]]),
+        grafico: { titulo: `Ensaio σ3 = ${e.s3} / σd = ${e.sd} kPa` } })),
+    ],
   };
 }
 

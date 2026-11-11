@@ -3,17 +3,49 @@ import os
 
 import pytest
 
-from psipav.app import app
-from psipav import engine as E
+os.environ.setdefault("PSIPAV_SENHA", "senha-de-teste")
+from psipav.app import app  # noqa: E402
+from psipav import engine as E  # noqa: E402
 
 EX = os.path.join(os.path.dirname(os.path.dirname(__file__)), "psipav", "static", "exemplos")
 PROPS = dict(hot=11, gd=1.97, p10=86.71, p40=67.09, p200=41.45, cbr=3, LL=29, IP=13, DR=2.64)
 
 
+SENHA = os.environ["PSIPAV_SENHA"]
+
+
 @pytest.fixture
-def c():
+def anon():
     app.config["TESTING"] = True
     return app.test_client()
+
+
+@pytest.fixture
+def c(anon):
+    r = anon.post("/login", data={"senha": SENHA})
+    assert r.status_code == 302
+    return anon
+
+
+def test_login_obrigatorio(anon):
+    assert anon.get("/").status_code == 302
+    assert anon.post("/api/triagem", json={}).status_code == 401
+    assert anon.get("/health").status_code == 200
+    assert anon.get("/login").status_code == 200
+
+
+def test_senha_errada_e_limite(anon):
+    for _ in range(5):
+        r = anon.post("/login", data={"senha": "errada"}, environ_base={"REMOTE_ADDR": "9.9.9.9"})
+        assert r.status_code == 401
+    r = anon.post("/login", data={"senha": SENHA}, environ_base={"REMOTE_ADDR": "9.9.9.9"})
+    assert r.status_code == 401 and "Muitas tentativas".encode() in r.data
+
+
+def test_logout(c):
+    assert c.get("/").status_code == 200
+    c.get("/logout")
+    assert c.get("/").status_code == 302
 
 
 def test_health(c):
@@ -84,9 +116,13 @@ def test_analise_completa(c):
 def test_relatorios(c):
     rel = {"titulo": "Teste ψ σ ε", "secoes": [{"titulo": "Tabela", "tipo": "tabela", "cabecalho": ["a", "b"], "linhas": [[1, 2]]},
                                               {"tipo": "texto", "texto": "εp = ψ1"}],
-           "series": [{"nome": "S", "colunas": ["N", "εp"], "linhas": [[1, 0.1]]}]}
+           "series": [{"nome": "S", "colunas": ["N", "εp"], "linhas": [[1, 0.1], [10, 0.2]], "grafico": {"titulo": "t"}}]}
     assert c.post("/api/relatorio/pdf", json=rel).data[:4] == b"%PDF"
-    assert c.post("/api/relatorio/xlsx", json=rel).data[:2] == b"PK"
+    x = c.post("/api/relatorio/xlsx", json=rel).data
+    assert x[:2] == b"PK"
+    import io, openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(x))
+    assert len(wb["S"]._charts) == 1
 
 
 def test_ler_tabela_virgula_decimal():

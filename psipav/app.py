@@ -5,21 +5,91 @@ DNIT 179/2018-IE · Modelo de Guimarães (2009) · Aprendizado de máquina com v
 import base64
 import io
 import os
-from datetime import datetime
+import secrets
+import time
+from datetime import datetime, timedelta
+from functools import wraps
 
 import numpy as np
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 from fpdf import FPDF
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.chart import Reference, ScatterChart, Series
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.utils import get_column_letter
+from PIL import Image as PILImage
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from psipav import engine as E
 
-VERSAO = "1.0.0"
+VERSAO = "1.1.0"
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+app.config.update(
+    MAX_CONTENT_LENGTH=8 * 1024 * 1024,
+    SECRET_KEY=os.environ.get("SECRET_KEY") or secrets.token_hex(32),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("RENDER") is not None,
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ── Acesso ───────────────────────────────────────────────────────────────────
+# A senha NÃO fica no código (o repositório é público). Ela vem de uma variável de
+# ambiente do servidor: PSIPAV_SENHA (texto) ou PSIPAV_SENHA_HASH (hash gerado com
+# werkzeug.security.generate_password_hash). Sem nenhuma das duas, ninguém entra.
+_senha_txt = os.environ.get("PSIPAV_SENHA")
+SENHA_HASH = os.environ.get("PSIPAV_SENHA_HASH") or (generate_password_hash(_senha_txt) if _senha_txt else None)
+del _senha_txt
+_TENTATIVAS = {}           # ip -> [timestamps de tentativas erradas]
+LIMITE_TENTATIVAS = 5
+JANELA_S = 300
+LIVRES = {"login", "logout", "health", "static"}
+
+
+def _ip():
+    return (request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0]).strip()
+
+
+@app.before_request
+def _exigir_login():
+    if request.endpoint in LIVRES or session.get("ok"):
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"erro": "Sessão expirada. Entre novamente."}), 401
+    return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    erro = None
+    if request.method == "POST":
+        ip = _ip()
+        agora = time.time()
+        lista = [t for t in _TENTATIVAS.get(ip, []) if agora - t < JANELA_S]
+        if not SENHA_HASH:
+            erro = "Senha de acesso não configurada no servidor (variável PSIPAV_SENHA)."
+        elif len(lista) >= LIMITE_TENTATIVAS:
+            erro = "Muitas tentativas. Aguarde alguns minutos e tente de novo."
+        elif check_password_hash(SENHA_HASH, request.form.get("senha", "")):
+            _TENTATIVAS.pop(ip, None)
+            session.clear()
+            session.permanent = True
+            session["ok"] = True
+            destino = request.args.get("next") or "/"
+            return redirect(destino if destino.startswith("/") and not destino.startswith("//") else "/")
+        else:
+            lista.append(agora)
+            erro = "Senha incorreta."
+        _TENTATIVAS[ip] = lista
+    return render_template("login.html", erro=erro, versao=VERSAO), (401 if erro else 200)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 ROTULOS = {
     "hot": ("Umidade ótima (wot)", "%"), "gd": ("Massa esp. aparente seca máx. (γd)", "g/cm³"),
@@ -300,7 +370,7 @@ def _pdf(rel):
     for sec in rel.get("secoes", []):
         tipo = sec.get("tipo")
         if sec.get("titulo"):
-            precisa = (sec.get("altura", 75) + 12) if tipo == "imagem" else 40
+            precisa = 105 if tipo == "imagem" else 40
             if pdf.get_y() > pdf.h - 15 - precisa:
                 pdf.add_page()
             pdf.ln(2)
@@ -339,11 +409,18 @@ def _pdf(rel):
                 pdf.ln()
         elif tipo == "imagem" and sec.get("img"):
             try:
-                img = io.BytesIO(base64.b64decode(sec["img"].split(",")[-1]))
-                alt = sec.get("altura", 75)
-                if pdf.get_y() + alt > pdf.h - 15:
+                bruto = base64.b64decode(sec["img"].split(",")[-1])
+                with PILImage.open(io.BytesIO(bruto)) as im:
+                    iw, ih = im.size
+                w = largura
+                h = w * ih / iw
+                if h > 130:             # limita a altura e reduz a largura na mesma proporção
+                    h = 130
+                    w = h * iw / ih
+                if pdf.get_y() + h > pdf.h - 15:
                     pdf.add_page()
-                pdf.image(img, x=pdf.l_margin, w=largura, h=alt)
+                pdf.image(io.BytesIO(bruto), x=pdf.l_margin + (largura - w) / 2, w=w, h=h)
+                pdf.ln(2)
             except Exception:
                 pass
     return bytes(pdf.output())
@@ -364,6 +441,20 @@ def _xlsx(rel):
     for sec in rel.get("secoes", []):
         tipo = sec.get("tipo")
         if tipo == "imagem":
+            if not sec.get("img"):
+                continue
+            try:
+                bruto = base64.b64decode(sec["img"].split(",")[-1])
+                img = XLImage(io.BytesIO(bruto))
+                escala = 760 / img.width
+                img.width, img.height = int(img.width * escala), int(img.height * escala)
+                if sec.get("titulo"):
+                    ws.cell(row=r, column=1, value=sec["titulo"]).font = negrito
+                    r += 1
+                ws.add_image(img, f"A{r}")
+                r += int(img.height / 20) + 2
+            except Exception:
+                pass
             continue
         if sec.get("titulo"):
             ws.cell(row=r, column=1, value=sec["titulo"]).font = negrito
@@ -401,6 +492,29 @@ def _xlsx(rel):
         for i, ln in enumerate(serie["linhas"], start=2):
             for j, c in enumerate(ln, start=1):
                 sh.cell(row=i, column=j, value=c)
+        g = serie.get("grafico")
+        n = len(serie["linhas"])
+        if g and n >= 2:
+            ch = ScatterChart()
+            ch.title = g.get("titulo", serie["nome"])
+            ch.style = 2
+            ch.height, ch.width = 11, 20
+            ch.x_axis.title = g.get("x", serie["colunas"][0])
+            ch.y_axis.title = g.get("y", "εp (%)")
+            if g.get("log_x", True):
+                ch.x_axis.scaling.logBase = 10
+            ch.x_axis.delete = False
+            ch.y_axis.delete = False
+            ch.legend.position = "b"
+            xs = Reference(sh, min_col=1, min_row=2, max_row=n + 1)
+            colunas = g.get("colunas") or list(range(2, len(serie["colunas"]) + 1))
+            for col in colunas:
+                ys = Reference(sh, min_col=col, min_row=1, max_row=n + 1)
+                s_ = Series(ys, xs, title_from_data=True)
+                s_.marker.symbol = "none" if g.get("linhas", True) else "circle"
+                s_.smooth = False
+                ch.series.append(s_)
+            sh.add_chart(ch, f"{get_column_letter(len(serie['colunas']) + 2)}2")
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

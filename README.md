@@ -10,7 +10,9 @@ O PsiPav é um aplicativo web para laboratórios e projetistas de pavimentos. El
 | **Ensaio em andamento** | Leituras de um corpo de prova ainda em ensaio (CSV/XLSX) | εp prevista em 150.000 ciclos com faixa de 90% e indicação de quando o ensaio pode ser encerrado |
 | **Ensaios completos** | Leituras de 6 a 9 corpos de prova do mesmo material | ψ₁–ψ₄ do modelo de Guimarães para o MeDiNa, classificação de acomodamento por par, contribuição da camada no afundamento |
 
-Os relatórios saem em PDF e Excel.
+Os relatórios saem em PDF (gráficos em alta resolução, sem distorção) e Excel (imagens dos gráficos e gráficos nativos editáveis). Cada gráfico tem escala linear/log, modo ampliado e exportação em PNG.
+
+O acesso é protegido por senha (sessão de 12 h, limite de 5 tentativas erradas a cada 5 min). A senha **não fica no código**: defina no servidor a variável de ambiente `PSIPAV_SENHA` (ou `PSIPAV_SENHA_HASH`, com um hash do `werkzeug`). No Render: serviço → Environment → Add Environment Variable. Para rodar localmente: `set PSIPAV_SENHA=sua_senha` (Windows) antes de iniciar o app.
 
 ## Dados e validação
 

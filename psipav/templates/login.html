@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrar · PsiPav</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23111827'/><text x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='serif'>ψ</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/psipav.css') }}">
+</head>
+<body class="tela-login">
+  <div class="login-lado">
+    <div class="login-marca">
+      <div class="logo logo-g">ψ</div>
+      <div>
+        <div class="login-nome">PsiPav</div>
+        <div class="login-sub">Deformação permanente de solos · DNIT 179/2018-IE</div>
+      </div>
+    </div>
+    <ul class="login-lista">
+      <li><b>Triagem</b> de jazidas a partir da caracterização do solo</li>
+      <li><b>Ensaio em andamento</b>: previsão em 150.000 ciclos e momento de encerrar</li>
+      <li><b>Ensaios completos</b>: ψ₁–ψ₄ de Guimarães para o MeDiNa e acomodamento</li>
+    </ul>
+    <div class="login-rodape">Validado em 105 ensaios triaxiais deixando cada solo de fora do treino</div>
+  </div>
+  <main class="login-caixa">
+    <form method="post" class="login-form" autocomplete="off">
+      <h1>Entrar</h1>
+      <p>Acesso restrito. Informe a senha para continuar.</p>
+      <label class="campo"><span>Senha</span>
+        <div class="senha-linha">
+          <input type="password" name="senha" id="senha" required autofocus>
+          <button type="button" class="btn btn-sec btn-peq" id="ver" aria-label="Mostrar senha">Mostrar</button>
+        </div>
+      </label>
+      {% if erro %}<div class="login-erro">{{ erro }}</div>{% endif %}
+      <button class="btn btn-pri" type="submit">Entrar</button>
+      <div class="login-versao">PsiPav v{{ versao }}</div>
+    </form>
+  </main>
+<script>
+  document.getElementById("ver").addEventListener("click", (e) => {
+    const s = document.getElementById("senha");
+    const mostrar = s.type === "password";
+    s.type = mostrar ? "text" : "password";
+    e.target.textContent = mostrar ? "Ocultar" : "Mostrar";
+  });
+</script>
+</body>
+</html>
