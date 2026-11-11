@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+.env
+.pytest_cache/
+# dados brutos de pesquisa ficam fora do repositório público
+*.xlsx
+!psipav/static/exemplos/*.xlsx
+publicar_github.bat

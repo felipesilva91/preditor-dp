@@ -122,6 +122,11 @@
       A norma DNIT 179 exige mínimo de <strong>150.000 ciclos</strong>.
       A curva completa é sempre gerada. O N define o ponto de diagnóstico.
     </div>
+    <div class="field-group" style="margin-top:14px">
+      <label class="field-label">Espessura da camada <span class="field-unit">cm (opcional)</span></label>
+      <input type="number" id="inp-h" class="field-input" placeholder="Ex: 20" step="1" min="1" max="200">
+      <div class="field-hint">Estima a contribuição da camada no afundamento: δ = εp × h</div>
+    </div>
     <div class="nav-btns">
       <button class="btn-back" onclick="goStep(2)">← Voltar</button>
       <button class="btn-calc" onclick="calcular()">
@@ -165,6 +170,8 @@
       <div class="ep-sub" id="ep-sub"></div>
     </div>
 
+    <div class="avisos-card hidden" id="avisos-card"></div>
+
     <div class="metrics-grid">
       <div class="metric-card"><div class="mc-label">N = 10.000</div><div class="mc-val" id="m-10k">—</div><div class="mc-unit">%</div></div>
       <div class="metric-card"><div class="mc-label">N = 50.000</div><div class="mc-val" id="m-50k">—</div><div class="mc-unit">%</div></div>
@@ -172,10 +179,21 @@
       <div class="metric-card"><div class="mc-label">N = 150.000</div><div class="mc-val" id="m-150k">—</div><div class="mc-unit">%</div></div>
     </div>
 
+    <div class="atr-card hidden" id="atr-card"></div>
+
     <div class="chart-card">
       <div class="chart-title">Curva εp × Número de ciclos — DNIT 179/2018-IE</div>
       <div class="chart-wrap"><canvas id="chart-dp"></canvas></div>
+      <div class="chart-note">Faixa sombreada: dispersão entre as 100 árvores do Random Forest (P10–P90). Não é intervalo de confiança do ensaio.</div>
     </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Análise de acomodamento — εp acumulada × taxa de acréscimo</div>
+      <div class="chart-wrap"><canvas id="chart-shake"></canvas></div>
+      <div class="chart-note">Avaliação gráfica descrita no item 10.2 da DNIT 179/2018-IE: há acomodamento quando a curva tende à vertical (a taxa cai e εp para de crescer).</div>
+    </div>
+
+    <div class="ref-card" id="ref-card"></div>
 
     <div class="tipo-card" id="tipo-card">
       <div class="tipo-head">
@@ -187,15 +205,16 @@
     </div>
 
     <div class="diag-card">
-      <div class="card-title">Diagnóstico técnico — uso em pavimento</div>
+      <div class="card-title">Diagnóstico indicativo — uso em pavimento</div>
       <div class="diag-row" id="diag-base"><div class="diag-dot"></div><div class="diag-body"><div class="diag-txt"></div><div class="diag-sub">Camada de base</div></div></div>
       <div class="diag-row" id="diag-sub"><div class="diag-dot"></div><div class="diag-body"><div class="diag-txt"></div><div class="diag-sub">Camada de sub-base</div></div></div>
       <div class="diag-row" id="diag-sub2"><div class="diag-dot"></div><div class="diag-body"><div class="diag-txt"></div><div class="diag-sub">Subleito do pavimento</div></div></div>
+      <div class="chart-note">Orientação preliminar do app. A escolha da camada deve ser verificada no dimensionamento mecanístico-empírico (MeDiNa).</div>
     </div>
 
     <!-- GUIMARÃES - DETALHADO -->
     <div class="guim-card">
-      <div class="card-title">Modelo de Guimarães (2009) — DNIT 179/2018-IE seção 10.1</div>
+      <div class="card-title">Modelo de Guimarães (2009) — DNIT 179/2018-IE item 10.1</div>
 
       <div class="guim-formula-box">
         <div class="guim-formula-title">Expressão do modelo</div>
@@ -206,13 +225,13 @@
       <div class="guim-method">
         <div class="guim-method-title">Como os parâmetros foram obtidos</div>
         <div class="guim-steps">
-          <div class="guim-step"><span class="gs-num">1</span><span>O modelo Random Forest previu os valores de εp para os 13 pontos de leitura da curva (N = 1, 10, 50... 150.000 ciclos)</span></div>
-          <div class="guim-step"><span class="gs-num">2</span><span>Usando σ₃, σd e N como variáveis independentes, aplicou-se regressão não linear múltipla (método dos mínimos quadrados) para ajustar os 4 parâmetros ψ₁..ψ₄ à curva prevista</span></div>
-          <div class="guim-step"><span class="gs-num">3</span><span>O ajuste minimiza a diferença entre a curva do Random Forest e a curva analítica do modelo de Guimarães</span></div>
+          <div class="guim-step"><span class="gs-num">1</span><span>O Random Forest previu as curvas εp × N (13 leituras, até 150.000 ciclos) para os <strong>9 pares de tensão da Tabela 2</strong>, como se fossem 9 corpos de prova</span></div>
+          <div class="guim-step"><span class="gs-num">2</span><span>Com σ₃, σd e N como variáveis, fez-se regressão não linear múltipla (mínimos quadrados em escala log, para que todos os pares pesem igual) nas 9 curvas juntas, como pede o item 10.1 da DNIT 179/2018-IE</span></div>
+          <div class="guim-step"><span class="gs-num">3</span><span>Os parâmetros ψ₁..ψ₄ valem para o material, não só para o par escolhido. A linha tracejada no gráfico é o modelo ajustado para o seu par</span></div>
         </div>
       </div>
 
-      <div class="guim-params-label">Parâmetros calibrados para este ensaio</div>
+      <div class="guim-params-label">Parâmetros do material (entrada do MeDiNa)</div>
       <div class="guim-params-res" id="guim-res"></div>
       <div class="guim-r2-row" id="guim-r2-row"></div>
 

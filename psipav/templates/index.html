@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PsiPav · Deformação permanente de solos</title>
+<meta name="description" content="Previsão e análise de deformação permanente de solos tropicais segundo a DNIT 179/2018-IE.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23111827'/><text x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='serif'>ψ</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/psipav.css') }}">
+</head>
+<body>
+
+<header class="topo">
+  <div class="topo-in">
+    <div class="marca">
+      <div class="logo">ψ</div>
+      <div>
+        <div class="marca-nome">PsiPav</div>
+        <div class="marca-sub">Deformação permanente de solos · DNIT 179/2018-IE</div>
+      </div>
+    </div>
+    <nav class="abas" id="abas">
+      <button class="aba ativa" data-aba="triagem">Triagem</button>
+      <button class="aba" data-aba="ensaio">Ensaio em andamento</button>
+      <button class="aba" data-aba="analise">Ensaios completos</button>
+      <button class="aba" data-aba="metodo">Método e validação</button>
+    </nav>
+  </div>
+</header>
+
+<main class="conteudo">
+
+<!-- ═════════════════════════ TRIAGEM ═════════════════════════ -->
+<section class="modulo ativo" id="mod-triagem">
+  <div class="mod-cab">
+    <h1>Triagem por propriedades do solo</h1>
+    <p>Estimativa preliminar da curva εp × N para um solo ainda não ensaiado, com faixa de confiança calibrada em solos fora do treino. Use para pré-seleção de jazidas e planejamento de ensaios, não como substituto do ensaio triaxial.</p>
+  </div>
+  <div class="grade">
+    <form class="painel" id="form-triagem" autocomplete="off">
+      <div class="painel-tit">Amostra</div>
+      <label class="campo"><span>Identificação</span><input id="t-nome" type="text" placeholder="Ex.: Jazida J-03, km 42"></label>
+      <div class="painel-tit">Caracterização</div>
+      <div class="campos2">
+        {% for k, rot in rotulos.items() %}
+        <label class="campo">
+          <span>{{ rot[0] }} <em>{{ rot[1] }}</em></span>
+          <input id="t-{{ k }}" type="number" step="any" required
+                 placeholder="{{ '%g'|format(ranges[k].min) }} a {{ '%g'|format(ranges[k].max) }}">
+        </label>
+        {% endfor %}
+      </div>
+      <div class="painel-tit">Estado de tensões (Tabela 2)</div>
+      <label class="campo"><span>Par σ₃ / σd (kPa)</span>
+        <select id="t-par">
+          {% for a, b in tabela2 %}<option value="{{ a }}|{{ b }}" {% if a == 80 and b == 160 %}selected{% endif %}>σ₃ = {{ a }} · σd = {{ b }} · σ₁/σ₃ = {{ '%g'|format((a + b) / a) }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="campo"><span>Espessura da camada <em>cm · opcional</em></span><input id="t-h" type="number" step="any" placeholder="Ex.: 20"></label>
+      <button class="btn btn-pri" type="submit">Prever</button>
+      <button class="btn btn-sec" type="button" id="t-exemplo">Preencher com um solo do banco</button>
+    </form>
+
+    <div class="resultado" id="res-triagem">
+      <div class="vazio">Preencha a caracterização do solo e clique em <strong>Prever</strong>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ ENSAIO EM ANDAMENTO ═════════════════════════ -->
+<section class="modulo" id="mod-ensaio">
+  <div class="mod-cab">
+    <h1>Ensaio em andamento</h1>
+    <p>Envie as leituras de um corpo de prova ainda em ensaio. O PsiPav prevê a deformação em 150.000 ciclos com faixa de confiança de 90% e indica quando a previsão já é precisa o bastante para encerrar o ensaio.</p>
+  </div>
+  <div class="grade">
+    <form class="painel" id="form-ensaio" autocomplete="off">
+      <div class="painel-tit">Corpo de prova</div>
+      <label class="campo"><span>Identificação</span><input id="e-nome" type="text" placeholder="Ex.: J-03 · CP 5"></label>
+      <div class="campos2">
+        <label class="campo"><span>σ₃ <em>kPa</em></span><input id="e-s3" type="number" step="any" value="80" required></label>
+        <label class="campo"><span>σd <em>kPa</em></span><input id="e-sd" type="number" step="any" value="160" required></label>
+        <label class="campo"><span>Altura de referência <em>mm</em></span><input id="e-alt" type="number" step="any" value="200"></label>
+        <label class="campo"><span>Unidade das leituras</span>
+          <select id="e-un"><option value="pct">Deformação (%)</option><option value="mm">Deslocamento (mm)</option></select></label>
+      </div>
+      <div class="painel-tit">Leituras (N e deformação)</div>
+      <label class="arquivo"><input type="file" id="e-arq" accept=".csv,.txt,.xlsx"><span>Enviar CSV, TXT ou XLSX</span></label>
+      <textarea id="e-txt" rows="7" placeholder="Ou cole aqui duas colunas: N e deformação&#10;1;0,012&#10;10;0,035&#10;..."></textarea>
+      <a class="link" href="{{ url_for('static', filename='exemplos/exemplo_ensaio_em_andamento.csv') }}" download>Baixar arquivo de exemplo</a>
+      <div class="painel-tit">Critério de encerramento</div>
+      <div class="campos2">
+        <label class="campo"><span>Tolerância <em>mm</em></span><input id="e-tolmm" type="number" step="any" value="0.10"></label>
+        <label class="campo"><span>ou tolerância <em>%</em></span><input id="e-tolrel" type="number" step="any" value="10"></label>
+      </div>
+      <button class="btn btn-pri" type="submit">Analisar ensaio</button>
+    </form>
+    <div class="resultado" id="res-ensaio">
+      <div class="vazio">Envie as leituras do ensaio (mínimo de 3.000 ciclos) e clique em <strong>Analisar ensaio</strong>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ ENSAIOS COMPLETOS ═════════════════════════ -->
+<section class="modulo" id="mod-analise">
+  <div class="mod-cab">
+    <h1>Ensaios completos</h1>
+    <p>Análise de um conjunto de corpos de prova do mesmo material: parâmetros ψ₁ a ψ₄ do modelo de Guimarães para o MeDiNa, classificação de acomodamento de cada par e contribuição estimada no afundamento.</p>
+  </div>
+  <div class="grade">
+    <form class="painel" id="form-analise" autocomplete="off">
+      <div class="painel-tit">Material</div>
+      <label class="campo"><span>Identificação</span><input id="a-nome" type="text" placeholder="Ex.: Solo J-03 · energia intermediária"></label>
+      <div class="campos2">
+        <label class="campo"><span>Altura de referência <em>mm</em></span><input id="a-alt" type="number" step="any" value="200"></label>
+        <label class="campo"><span>Unidade</span>
+          <select id="a-un"><option value="pct">Deformação (%)</option><option value="mm">Deslocamento (mm)</option></select></label>
+        <label class="campo"><span>Espessura da camada <em>cm · opcional</em></span><input id="a-h" type="number" step="any" placeholder="Ex.: 20"></label>
+      </div>
+      <div class="painel-tit">Leituras (σ₃, σd, N, deformação)</div>
+      <label class="arquivo"><input type="file" id="a-arq" accept=".csv,.txt,.xlsx"><span>Enviar CSV, TXT ou XLSX</span></label>
+      <textarea id="a-txt" rows="7" placeholder="Quatro colunas: σ3; σd; N; deformação&#10;40;40;1;0,010&#10;40;40;10;0,013&#10;..."></textarea>
+      <a class="link" href="{{ url_for('static', filename='exemplos/exemplo_ensaios_completos.csv') }}" download>Baixar arquivo de exemplo (9 corpos de prova)</a>
+      <button class="btn btn-pri" type="submit">Analisar ensaios</button>
+    </form>
+    <div class="resultado" id="res-analise">
+      <div class="vazio">Envie as leituras de 6 a 9 corpos de prova e clique em <strong>Analisar ensaios</strong>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ MÉTODO ═════════════════════════ -->
+<section class="modulo" id="mod-metodo">
+  <div class="mod-cab">
+    <h1>Método e validação</h1>
+    <p>Como o PsiPav calcula, com que dados foi treinado e quanto erra quando o solo não está no banco.</p>
+  </div>
+  <div class="metodo" id="metodo-corpo"><div class="vazio">Carregando…</div></div>
+</section>
+
+</main>
+
+<footer class="rodape">
+  PsiPav v{{ versao }} · Banco de 105 ensaios triaxiais de cargas repetidas (15 solos do Ceará) · DNIT 179/2018-IE · Guimarães (2009)
+</footer>
+
+<div class="toast oculto" id="toast"></div>
+<script src="{{ url_for('static', filename='js/psipav.js') }}"></script>
+</body>
+</html>

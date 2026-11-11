@@ -937,6 +937,10 @@ body {
   font-family: 'IBM Plex Mono', monospace;
   color: #fff;
   line-height: 1.5;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-bottom: 0;
 }
 
 .guim-formula-sub {
@@ -1135,3 +1139,32 @@ body {
   .guim-interp-grid { grid-template-columns: 1fr; }
   .inputs-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ── NOVOS BLOCOS (v2.1) ─────────────────────────────────────────────────── */
+.chart-note { font-size: 10.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+
+.avisos-card {
+  background: var(--amber-l);
+  border-left: 3px solid #D4AC0D;
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--amber);
+  line-height: 1.6;
+}
+
+.atr-card, .ref-card {
+  background: white;
+  border-radius: var(--radius);
+  padding: 16px 22px;
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.atr-card .atr-val { font-size: 22px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; color: var(--navy); }
+.ref-card .ref-nome { font-weight: 600; color: var(--navy); }
+.ref-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; margin-left: 6px; }
+.ref-badge.parecido { background: var(--green-l); color: var(--green); }
+.ref-badge.moderado { background: var(--amber-l); color: var(--amber); }
+.ref-badge.distante { background: var(--red-l); color: var(--red); }

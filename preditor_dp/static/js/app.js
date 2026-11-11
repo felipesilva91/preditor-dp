@@ -5,6 +5,7 @@
 
 const state = { s3: null, sd: null, nc: 150000 };
 let dpChart = null;
+let shakeChart = null;
 
 // ── Navegação ───────────────────────────────────────────────────────────────
 function goStep(n) {
@@ -117,6 +118,7 @@ function calcular() {
     s3:   state.s3,
     sd:   state.sd,
     nc:   state.nc,
+    h_cm: document.getElementById("inp-h").value.trim() || null,
   };
 
   fetch("/api/calcular", {
@@ -157,10 +159,14 @@ function renderResultado(data) {
   document.getElementById("m-100k").textContent = data.dp_100k.toFixed(3);
   document.getElementById("m-150k").textContent = data.dp_150k.toFixed(3);
 
-  renderChart(data.curva, data.labels, data.ciclos, inp.nc);
+  renderAvisos(data.avisos);
+  renderATR(data.atr, inp.nc);
+  renderChart(data);
+  renderShakedown(data.shakedown);
+  renderRef(data.solo_ref, inp);
   renderTipo(data.tipo);
   renderDiag(data.tipo);
-  renderGuimaraes(data.guimaraes, data.guim_r2);
+  renderGuimaraes(data.guimaraes, data.guim_r2, data.guim_erro);
   renderInputs(inp);
 
   document.getElementById("empty-state").classList.add("hidden");
@@ -168,33 +174,88 @@ function renderResultado(data) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-// ── Gráfico ─────────────────────────────────────────────────────────────────
-function renderChart(dp, labels, ciclos, nc) {
+// ── Avisos / afundamento / solo de referência ───────────────────────────────
+function renderAvisos(avisos) {
+  const el = document.getElementById("avisos-card");
+  if (!avisos || !avisos.length) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  el.innerHTML = avisos.map(a => `⚠ ${a}`).join("<br>");
+  el.classList.remove("hidden");
+}
+
+function renderATR(atr, nc) {
+  const el = document.getElementById("atr-card");
+  if (!atr) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  el.innerHTML =
+    `<div class="card-title">Contribuição da camada no afundamento</div>` +
+    `<div class="atr-val">${atr.delta_mm.toFixed(2)} mm</div>` +
+    `<div>δ = εp × h, com h = ${atr.h_cm} cm e N = ${nc.toLocaleString("pt-BR")} ciclos ` +
+    `(DNIT 179/2018-IE, item 3.8). Estimativa simplificada: usa o par de tensões do ensaio, ` +
+    `não as tensões calculadas na estrutura.</div>`;
+  el.classList.remove("hidden");
+}
+
+function renderRef(ref, inp) {
+  const el = document.getElementById("ref-card");
+  if (!ref) { el.innerHTML = ""; return; }
+  const txtNivel = { parecido: "muito parecido", moderado: "parecido em parte", distante: "diferente — extrapolação" };
+  const p = ref.props;
+  el.innerHTML =
+    `<div class="card-title">Solo do banco mais parecido</div>` +
+    `<div><span class="ref-nome">${ref.nome}</span> ${ref.aashto ? "(" + ref.aashto + ")" : ""}` +
+    `<span class="ref-badge ${ref.nivel}">${txtNivel[ref.nivel]}</span></div>` +
+    `<div style="margin-top:6px;color:var(--muted)">Wot ${p.hot}% · γd ${p.gd} g/cm³ · #10 ${p.p10}% · ` +
+    `#40 ${p.p40}% · #200 ${p.p200}% · CBR ${p.cbr}% — distância normalizada ${ref.dist}</div>` +
+    (ref.curva_lab
+      ? `<div style="margin-top:6px">A curva medida em laboratório desse solo (σ₃ = ${inp.s3} / σd = ${inp.sd} kPa) aparece em pontos no gráfico.</div>`
+      : "");
+}
+
+// ── Gráfico εp × N ──────────────────────────────────────────────────────────
+function renderChart(data) {
   if (dpChart) dpChart.destroy();
+  const { curva: dp, labels, ciclos } = data;
+  const nc = data.inputs.nc;
   const refIdx = ciclos.indexOf(nc);
   const ptColors = dp.map((_, i) => i === refIdx ? "#E74C3C" : "#1558A0");
   const ptSizes  = dp.map((_, i) => i === refIdx ? 7 : 4);
 
+  const datasets = [];
+  if (data.banda_p90 && data.banda_p10) {
+    datasets.push({ label: "Faixa P10–P90", data: data.banda_p90, borderWidth: 0, pointRadius: 0,
+                    backgroundColor: "rgba(21,88,160,0.12)", fill: "+1", tension: 0.35 });
+    datasets.push({ label: "_p10", data: data.banda_p10, borderWidth: 0, pointRadius: 0,
+                    fill: false, tension: 0.35 });
+  }
+  datasets.push({
+    label: "Random Forest", data: dp,
+    borderColor: "#1558A0", backgroundColor: "#1558A0",
+    borderWidth: 2.5, fill: false, tension: 0.35,
+    pointRadius: ptSizes, pointBackgroundColor: ptColors, pointHoverRadius: 6,
+  });
+  if (data.guim_curva) {
+    datasets.push({ label: "Guimarães (9 pares)", data: data.guim_curva, borderColor: "#0A2540",
+                    borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.35 });
+  }
+  if (data.solo_ref && data.solo_ref.curva_lab) {
+    datasets.push({ label: `Lab: ${data.solo_ref.nome}`, data: data.solo_ref.curva_lab, showLine: false,
+                    pointStyle: "rectRot", pointRadius: 5, borderColor: "#784212",
+                    backgroundColor: "#784212" });
+  }
+
   dpChart = new Chart(document.getElementById("chart-dp"), {
     type: "line",
-    data: {
-      labels,
-      datasets: [{
-        label: "εp (%)", data: dp,
-        borderColor: "#1558A0", backgroundColor: "rgba(21,88,160,0.06)",
-        borderWidth: 2.5, fill: true, tension: 0.35,
-        pointRadius: ptSizes, pointBackgroundColor: ptColors, pointHoverRadius: 6,
-      }],
-    },
+    data: { labels, datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: { display: true, labels: { boxWidth: 12, font: { size: 10 },
+                  filter: it => !it.text.startsWith("_") } },
         tooltip: {
           backgroundColor: "#0A2540", titleColor: "#94BDE8", bodyColor: "#fff", padding: 10,
+          filter: it => !it.dataset.label.startsWith("_"),
           callbacks: {
             title: ctx => `N = ${ciclos[ctx[0].dataIndex].toLocaleString("pt-BR")} ciclos`,
-            label: ctx => ` εp = ${ctx.parsed.y.toFixed(4)}%`,
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}%`,
           },
         },
       },
@@ -214,20 +275,46 @@ function renderChart(dp, labels, ciclos, nc) {
   });
 }
 
+// ── Gráfico de acomodamento (shakedown) ─────────────────────────────────────
+function renderShakedown(pontos) {
+  if (shakeChart) shakeChart.destroy();
+  const pts = (pontos || []).filter(p => p.taxa && p.ep > 0).map(p => ({ x: p.ep, y: p.taxa, n: p.n }));
+  shakeChart = new Chart(document.getElementById("chart-shake"), {
+    type: "scatter",
+    data: { datasets: [{ label: "taxa", data: pts, showLine: true, borderColor: "#1558A0",
+                         backgroundColor: "#1558A0", pointRadius: 4, borderWidth: 2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx =>
+          ` N = ${ctx.raw.n.toLocaleString("pt-BR")} · εp = ${ctx.raw.x.toFixed(4)}% · taxa = ${ctx.raw.y.toExponential(2)} %/ciclo` } },
+      },
+      scales: {
+        x: { type: "logarithmic", title: { display: true, text: "εp acumulada (%)", font: { size: 11 }, color: "#9CA3AF" },
+             ticks: { font: { size: 10 }, color: "#6B7280" }, grid: { color: "rgba(0,0,0,0.04)" } },
+        y: { type: "logarithmic", title: { display: true, text: "Taxa de acréscimo (%/ciclo)", font: { size: 11 }, color: "#9CA3AF" },
+             ticks: { font: { size: 10 }, color: "#6B7280", callback: v => Number(v).toExponential(0) },
+             grid: { color: "rgba(0,0,0,0.04)" } },
+      },
+    },
+  });
+}
+
 // ── Tipo de comportamento ────────────────────────────────────────────────────
 const TIPOS = {
   1: { cls:"t1", icon:"I",   name:"Tipo I — Acomodamento plástico (rápido)",
        desc:"Shakedown plástico. Tendência de estabilização para poucos ciclos. Material adequado para pavimentação.",
-       ref:"DNIT 179/2018-IE — seção 10.2, Tipo I" },
+       ref:"Tipos descritos no item 10.2 da DNIT 179/2018-IE. Os limites numéricos (εp e taxa entre 10 mil e 150 mil ciclos) são critério indicativo deste app, não da norma." },
   2: { cls:"t2", icon:"II",  name:"Tipo II — Acomodamento plástico (tardio)",
        desc:"Shakedown plástico com alto valor de deslocamento antes do acomodamento. Requer controle de tensões.",
-       ref:"DNIT 179/2018-IE — seção 10.2, Tipo II" },
+       ref:"Tipos descritos no item 10.2 da DNIT 179/2018-IE. Os limites numéricos (εp e taxa entre 10 mil e 150 mil ciclos) são critério indicativo deste app, não da norma." },
   3: { cls:"t3", icon:"III", name:"Tipo III — Sem acomodamento",
        desc:"O material não se acomoda, continuando a acumular deformação com o número de ciclos.",
-       ref:"DNIT 179/2018-IE — seção 10.2, Tipo III" },
+       ref:"Tipos descritos no item 10.2 da DNIT 179/2018-IE. Os limites numéricos (εp e taxa entre 10 mil e 150 mil ciclos) são critério indicativo deste app, não da norma." },
   4: { cls:"t4", icon:"IV",  name:"Tipo IV — Colapso incremental",
        desc:"Ruptura a baixos números de ciclos. Risco de colapso do pavimento.",
-       ref:"DNIT 179/2018-IE — seção 10.2, Tipo IV" },
+       ref:"Tipos descritos no item 10.2 da DNIT 179/2018-IE. Os limites numéricos (εp e taxa entre 10 mil e 150 mil ciclos) são critério indicativo deste app, não da norma." },
 };
 
 function renderTipo(tipo) {
@@ -258,7 +345,7 @@ function renderDiag(tipo) {
 }
 
 // ── Guimarães ────────────────────────────────────────────────────────────────
-function renderGuimaraes(params, r2) {
+function renderGuimaraes(params, r2, erro) {
   const labels = ["ψ₁", "ψ₂", "ψ₃", "ψ₄"];
   const descs  = ["fator de escala", "exp. σ₃", "exp. σd", "exp. N"];
   if (params) {
@@ -270,7 +357,9 @@ function renderGuimaraes(params, r2) {
       </div>`).join("");
     document.getElementById("guim-r2-row").innerHTML =
       r2 !== null
-        ? `<div class="guim-r2">R² do ajuste: <strong>${r2}</strong> — qualidade do ajuste do modelo de Guimarães à curva Random Forest</div>`
+        ? `<div class="guim-r2">R² do ajuste: <strong>${r2}</strong>` +
+          (erro !== null && erro !== undefined ? ` · erro relativo médio: <strong>${(erro * 100).toFixed(1)}%</strong>` : "") +
+          ` — modelo de Guimarães ajustado às 9 curvas previstas pelo Random Forest</div>`
         : "";
   }
 }
@@ -339,7 +428,8 @@ function exportar(formato) {
 // ── Novo ensaio ──────────────────────────────────────────────────────────────
 function novoEnsaio() {
   state.s3 = null; state.sd = null; state.nc = 150000;
-  ["inp-nome","inp-hot","inp-gd","inp-p10","inp-p40","inp-p200","inp-cbr"].forEach(id => {
+  if (shakeChart) { shakeChart.destroy(); shakeChart = null; }
+  ["inp-nome","inp-h","inp-hot","inp-gd","inp-p10","inp-p40","inp-p200","inp-cbr"].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.value = ""; el.classList.remove("input-error"); }
   });
